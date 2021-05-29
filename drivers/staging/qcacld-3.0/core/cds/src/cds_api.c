@@ -896,8 +896,8 @@ QDF_STATUS cds_dp_open(struct wlan_objmgr_psoc *psoc)
 	}
 
 	dp_config.enable_rx_threads =
-		(cds_get_conparam() == QDF_GLOBAL_MONITOR_MODE) ?
-		false : gp_cds_context->cds_cfg->enable_dp_rx_threads;
+		/*(cds_get_conparam() == QDF_GLOBAL_MONITOR_MODE) ?
+		false : */gp_cds_context->cds_cfg->enable_dp_rx_threads;
 
 	qdf_status = dp_txrx_init(cds_get_context(QDF_MODULE_ID_SOC),
 				  OL_TXRX_PDEV_ID,

@@ -4807,6 +4807,7 @@ static const struct net_device_ops wlan_drv_ops = {
 static const struct net_device_ops wlan_mon_drv_ops = {
 	.ndo_open = hdd_mon_open,
 	.ndo_stop = hdd_stop,
+	.ndo_start_xmit = hdd_hard_start_xmit,
 	.ndo_get_stats = hdd_get_stats,
 };
 
@@ -6271,12 +6272,14 @@ struct hdd_adapter *hdd_open_adapter(struct hdd_context *hdd_ctx, uint8_t sessio
 		if (QDF_STATUS_SUCCESS != status)
 			goto err_free_netdev;
 
-		/* Stop the Interface TX queue. */
-		hdd_debug("Disabling queues");
-		wlan_hdd_netif_queue_control(adapter,
-					WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
+		/* do not disable tx in monitor mode */
+		if (QDF_MONITOR_MODE != cds_get_conparam()) {
+             /* Stop the Interface TX queue */
+			hdd_debug("Disabling queues");
+			wlan_hdd_netif_queue_control(adapter,
+					WLAN_NETIF_TX_DISABLE_N_CARRIER,
 					WLAN_CONTROL_PATH);
-
+    }
 		hdd_mic_init_work(adapter);
 
 		break;

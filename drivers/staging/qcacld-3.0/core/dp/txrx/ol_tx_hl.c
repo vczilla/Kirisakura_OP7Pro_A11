@@ -456,6 +456,7 @@ out:
 	return status;
 }
 
+#define MAX_RADIOTAP_LEN 256
 /**
  * ol_tx_hl_base() - send tx frames for a HL system.
  * @vdev: the virtual device sending the data
@@ -476,6 +477,7 @@ ol_tx_hl_base(
 {
 	struct ol_txrx_pdev_t *pdev = vdev->pdev;
 	qdf_nbuf_t msdu = msdu_list;
+	qdf_nbuf_t msdu_drop_list = NULL;
 	struct ol_txrx_msdu_info_t tx_msdu_info;
 	struct ocb_tx_ctrl_hdr_t tx_ctrl;
 	htt_pdev_handle htt_pdev = pdev->htt_pdev;
@@ -501,6 +503,26 @@ ol_tx_hl_base(
 		 * so store the next pointer immediately.
 		 */
 		next = qdf_nbuf_next(msdu);
+  		if (QDF_MONITOR_MODE == cds_get_conparam()) {
+			struct ieee80211_radiotap_header *rthdr;
+            rthdr = (struct ieee80211_radiotap_header *)(qdf_nbuf_data(msdu));
+           	rtap_len = rthdr->it_len;
+           	if (rtap_len > MAX_RADIOTAP_LEN) {
+				TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
+					"radiotap length exceeds %d, drop it!\n",
+					MAX_RADIOTAP_LEN);
+               	qdf_nbuf_set_next(msdu, NULL);
+                if (!msdu_drop_list)
+					msdu_drop_list = msdu;
+               	else
+					qdf_nbuf_set_next(prev_drop, msdu);
+				prev_drop = msdu;
+				msdu = next;
+				continue;
+			}
+			qdf_mem_copy(rtap, rthdr, rtap_len);
+			qdf_nbuf_pull_head(msdu, rtap_len);
+        }
 
 		tx_desc = ol_tx_hl_desc_alloc(pdev, vdev, msdu, &tx_msdu_info);
 
@@ -511,7 +533,11 @@ ol_tx_hl_base(
 			 */
 			TXRX_STATS_MSDU_LIST_INCR(pdev, tx.dropped.host_reject,
 						  msdu);
-			return msdu; /* the list of unaccepted MSDUs */
+			if (!msdu_drop_list)
+                msdu_drop_list = msdu;
+            else
+                qdf_nbuf_set_next(prev_drop, msdu);
+            return msdu_drop_list; /* the list of unaccepted MSDUs */
 		}
 
 		/* OL_TXRX_PROT_AN_LOG(pdev->prot_an_tx_sent, msdu);*/
@@ -670,6 +696,16 @@ ol_tx_hl_base(
 			 * HTT tx descriptor.
 			 */
 			htt_tx_desc_display(tx_desc->htt_tx_desc);
+			       
+			/* push radiotap as extra frag */
+	        if (QDF_MONITOR_MODE == cds_get_conparam()) {
+				qdf_nbuf_frag_push_head(
+                    msdu,
+                    rtap_len,
+                    (uint8_t *)rtap, /* virtual addr */
+                    0, 0 /* phys addr MSBs - n/a */);
+				qdf_nbuf_set_frag_is_wordstream(msdu, 1, 1);
+        	}
 
 			ol_tx_enqueue(pdev, txq, tx_desc, &tx_msdu_info);
 			if (tx_msdu_info.peer) {
@@ -686,7 +722,7 @@ MSDU_LOOP_BOTTOM:
 
 		if (call_sched)
 			ol_tx_sched(pdev);
-		return NULL; /* all MSDUs were accepted */
+		return msdu_drop_list; /* all MSDUs were accepted */
 }
 
 #ifdef QCA_SUPPORT_TXRX_DRIVER_TCP_DEL_ACK

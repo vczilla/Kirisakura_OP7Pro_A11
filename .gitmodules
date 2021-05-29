@@ -1,0 +1,3 @@
+[submodule "drivers/staging/qcacld-2.0"]
+	path = drivers/staging/qcacld-2.0
+	url = https://gitlab.com/Codeaurora/platform_vendor_qcom-opensource_wlan_qcacld-2.0.git
